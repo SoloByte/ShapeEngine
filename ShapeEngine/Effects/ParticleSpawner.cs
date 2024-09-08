@@ -1,6 +1,9 @@
 using System.Numerics;
 using Raylib_cs;
+using ShapeEngine.Core;
 using ShapeEngine.Core.Collision;
+using ShapeEngine.Core.Interfaces;
+using ShapeEngine.Core.Shapes;
 using ShapeEngine.Core.Structs;
 
 namespace ShapeEngine.Effects;
@@ -13,20 +16,41 @@ public struct SpawnInformation
 
 public interface ISpawnable
 {
-    public ISpawnable Create();
+    public event Action<ISpawnable>? OnFinished;
     public bool Spawn(SpawnInformation information);
     public bool Despawn();
-    public bool IsFinished();
-}
-
-public class Particle2
-{
     
 }
+
+/*public class Particle2 : GameObject
+{
+    public override Rect GetBoundingBox()
+    {
+        throw new NotImplementedException();
+    }
+
+    public override void Update(GameTime time, ScreenInfo game, ScreenInfo gameUi, ScreenInfo ui)
+    {
+        throw new NotImplementedException();
+    }
+
+    public override void DrawGame(ScreenInfo game)
+    {
+        throw new NotImplementedException();
+    }
+
+    public override void DrawGameUI(ScreenInfo gameUi)
+    {
+        throw new NotImplementedException();
+    }
+}*/
 
 
 public class ParticleSpawner<T> where T : ISpawnable
 {
+    public delegate T Create();
+    
+    
     public Transform2D Transform { get; set; }
     public Vector2 Velocity { get; set; } //does it move the particle spawner? or does it just use this for the spawn info?
     
@@ -53,18 +77,51 @@ public class ParticleSpawner<T> where T : ISpawnable
     public readonly int MaxParticles;
     public readonly bool PoolParticles;
     
-    private List<T>? pool = null;
-    private T spawnable;
+    private readonly Queue<T>? inUse = null;
+    private readonly Queue<T>? available = null;
+    private readonly Create creator;
 
-    public ParticleSpawner(T spawnable, int maxParticles = -1, bool poolParticles = true)
+    public ParticleSpawner(Create creator, int maxParticles = -1, bool poolParticles = true)
     {
-        this.spawnable = spawnable;
+        this.creator = creator;
         MaxParticles = maxParticles;
         PoolParticles = poolParticles;
         if (poolParticles)
         {
-            pool = new List<T>(maxParticles > 0 ? maxParticles : 0);
+            inUse = new Queue<T>(maxParticles > 0 ? maxParticles : 0);
+            available = new Queue<T>(maxParticles > 0 ? maxParticles : 0);
         }
+    }
+    
+    
+    public virtual void Spawn()
+    {
+        
+    }
+
+    protected T GetInstance()
+    {
+        if(available == null || inUse == null) return creator();
+
+        if (available.Count <= 0)
+        {
+            var instance = creator();
+            instance.OnFinished += InstanceOnOnFinished;
+            inUse.Enqueue(instance);
+            return instance;
+        }
+        else
+        {
+            var instance = available.Dequeue();
+            inUse.Enqueue(instance);
+            return instance;
+        }
+        
+    }
+
+    private void InstanceOnOnFinished(ISpawnable obj)
+    {
+        
     }
 
     public bool Start()//start to trigger continuously, if spawn rate <= 0 calls burst
@@ -77,7 +134,7 @@ public class ParticleSpawner<T> where T : ISpawnable
         return true;
     }
 
-    public bool Burst()//triggers once
+    public bool OnShot()//triggers once
     {
         return true;
     }
